@@ -3,64 +3,20 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 module Main where
 
-import Control.Applicative
 import Control.Monad
 import Control.Monad.IO.Class (liftIO)
 
-import Data.Char
 import Data.List
-
-import qualified Text.BibTeX.Entry as Bibtex
-import Text.BibTeX.Format
-import qualified Text.BibTeX.Parse as Bibtex
-import Text.Parsec (many1)
-import Text.Parsec.String (parseFromFile)
 
 import Database.Persist
 import Database.Persist.Sqlite
-import Database.Persist.Store as DB
+
+import Text.Regex
 
 import DBModel
+import Bibtex
 
 import Graphics.UI.Gtk
-
-dbConf = SqliteConf "references.sqlite" 1
-
-parseEntries :: FilePath -> IO [Bibtex.T]
-parseEntries file = do
-  entriesEi <- parseFromFile (many1 Bibtex.entry) file 
-  return $ case entriesEi of
-    Left e -> error $ show e
-    Right es -> es
-
-toBibEntry :: Bibtex.T -> BibEntry
-toBibEntry t = 
-  let pubType = 
-        case map toLower (Bibtex.entryType t) of
-          "inproceedings" -> Conference
-          "incollection" -> Journal
-          "misc" -> Misc
-          "book" -> Book
-          "article" -> Article
-          "techreport" -> TechReport
-          "phdthesis" -> PhdThesis
-          e -> error $ "toBibEntry: " ++ e
-      fields = Bibtex.fields t
-      Just authors = lookup "author" fields
-      title = case lookup "title" fields <|> lookup "author" fields of
-        Just t -> t
-        Nothing -> error $ show t ++ " has no title"
-      Just year = lookup "year" fields
-      clean = unwords . words . filter (/= '\n') . filter (/= '\r')
-  in BibEntry (clean title) (read year) (authorsToList authors) pubType
-
-uniqueBibEntries = do 
-  es <- parseEntries "bibfile.bib"
-  return (map toBibEntry es)
-
-populateDB = do
-  es <- uniqueBibEntries
-  runDB $ mapM_ DB.insert es
 
 main :: IO ()
 main = do
@@ -75,14 +31,36 @@ main = do
   containerAdd w vbox
   
   menuBar <- menu w
+  
+  searchEntry <- entryNew
+  
   boxPackStart vbox menuBar PackNatural 1
+  boxPackStart vbox searchEntry PackNatural 1
   
   container <- refsContainer vbox
   
   entries <- fetchEntries
-  listStore <- listStoreNew entries
   
-  treeView <- bibEntryTreeView listStore entries 
+  listStore <- listStoreNew entries
+  searchStore <- treeModelFilterNew listStore []
+  on searchEntry editableChanged (treeModelFilterRefilter searchStore)
+  
+  let searchFunc iter = do
+        x <- listIterToItem iter listStore
+        searchText <- entryGetText searchEntry
+        
+        let title = bibEntryTitle (entityVal x)
+            author = bibEntryAuthors (entityVal x)
+            regex = mkRegexWithOpts searchText False False
+            searchResult = matchRegex regex (title ++ concat author)
+        
+        case searchResult of
+          Just _ -> return True
+          Nothing -> return False
+  treeModelFilterSetVisibleFunc searchStore searchFunc
+  
+  
+  treeView <- bibEntryTreeView searchStore listStore entries 
   containerAdd container treeView
   
   widgetShowAll w
@@ -112,17 +90,19 @@ saveStore listStore = do
     mapM_ saveEntity entities
 
 
-bibEntryTreeView listStore entries = do  
-  treeView <- treeViewNewWithModel listStore
+bibEntryTreeView filterStore listStore entries = do  
+  treeView <- treeViewNewWithModel filterStore
   
   let 
     addColumn :: CellRendererTextClass renderer => 
                  String -> Bool -> (BibEntry -> String) -> renderer -> IO ()
     addColumn title resize extractor renderer = do
       column <- treeViewColumnNew
+      
       treeViewColumnPackStart column renderer False
       set column [ treeViewColumnTitle := title
                  , treeViewColumnResizable := resize
+                 , treeViewColumnMaxWidth := 250
                  ]
       treeViewAppendColumn treeView column
       cellLayoutSetAttributes column renderer listStore
@@ -157,6 +137,11 @@ bibEntryTreeView listStore entries = do
 
   return treeView
 
+listIterToItem :: TreeIter -> ListStore a -> IO a
+listIterToItem iter store =
+  let i = listStoreIterToIndex iter
+  in listStoreGetValue store i
+   
 pack container w = boxPackStart container w PackNatural 2
 
 data BibEntryWidget = 
@@ -205,8 +190,6 @@ saveBibEntryWidget (BibEntryWidget key title year) = runDB $ do
     [ BibEntryTitle =. title'
     , BibEntryYear =. round year'
     ]
-                                         
-
 
 refWidget listStore i = do
   container <- tableNew 2 2 False
@@ -236,25 +219,11 @@ refsContainer win = do
 
   container <- vBoxNew False 2
   scrolledWindowAddWithViewport scrollWin container
-  
-  
+    
   containerAdd win scrollWin
   return container
-
-runDB f = createPoolConfig dbConf >>= runPool dbConf f
 
 fetchEntries :: IO [Entity BibEntry]
 fetchEntries = do
   runDB (runMigration migrateAll)
   runDB (selectList [] [])
-  
-authorsToList :: String -> [String]
-authorsToList = reverse . go [] . words
-  where
-    go acc [] = acc
-    go acc ws = 
-      let (author, rest) = break (== "and") ws
-          acc' = unwords author : acc
-      in case rest of
-        [] -> acc'
-        _:rest' -> go acc' rest'

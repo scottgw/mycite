@@ -56,10 +56,11 @@ Executable mycite
     persistent, 
     persistent-template, 
     persistent-sqlite,
+    regex-compat,
     transformers
   
   -- Modules not exported by this package.
-  Other-modules: DBModel
+  Other-modules: DBModel, Bibtex
   
   -- Extra tools (e.g. alex, hsc2hs, ...) needed to build the source.
   -- Build-tools:         

@@ -11,6 +11,7 @@
 module DBModel where -- (BibEntry, bibTable, year, title) where
 
 import Database.Persist
+import Database.Persist.Store
 import Database.Persist.Sqlite
 import Database.Persist.TH
 
@@ -41,6 +42,14 @@ ReferenceComment
 |]
 
 type BibEntryKey = Key SqlPersist BibEntry
+
+
+runDB :: PersistConfigBackend SqliteConf IO a -> IO a
+runDB f = createPoolConfig dbConf >>= runPool dbConf f
+
+dbConf :: SqliteConf
+dbConf = SqliteConf "references.sqlite" 1
+
 
 -- import Database.HaskellDB.Query
 -- import Database.HaskellDB.PrimQuery

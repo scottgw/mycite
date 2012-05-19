@@ -60,7 +60,7 @@ Executable mycite
     transformers
   
   -- Modules not exported by this package.
-  Other-modules: DBModel, Bibtex
+  Other-modules: DBModel, Bibtex, BibEntry
   
   -- Extra tools (e.g. alex, hsc2hs, ...) needed to build the source.
   -- Build-tools:         

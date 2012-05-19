@@ -15,13 +15,6 @@ import Database.Persist.Sqlite
 import Database.Persist.Store as DB
 
 import DBModel
-
-runDB :: PersistConfigBackend SqliteConf IO a -> IO a
-runDB f = createPoolConfig dbConf >>= runPool dbConf f
-
-dbConf :: SqliteConf
-dbConf = SqliteConf "references.sqlite" 1
-
   
 authorsToList :: String -> [String]
 authorsToList = reverse . go [] . words

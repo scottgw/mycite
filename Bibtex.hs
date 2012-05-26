@@ -3,6 +3,7 @@
 module Bibtex where
 
 import Control.Applicative
+import Control.Monad ((<=<))
 
 import Data.Char
 
@@ -34,8 +35,8 @@ parseEntries file = do
     Left e -> error $ show e
     Right es -> es
 
-toBibEntry :: Bibtex.T -> BibEntry
-toBibEntry t = 
+toBibEntry :: Bibtex.T -> [AuthorKey] -> BibEntry
+toBibEntry t authorKeys = 
   let pubType = 
         case map toLower (Bibtex.entryType t) of
           "inproceedings" -> Conference
@@ -47,18 +48,27 @@ toBibEntry t =
           "phdthesis" -> PhdThesis
           e -> error $ "toBibEntry: " ++ e
       fields = Bibtex.fields t
-      Just authors = lookup "author" fields
+      
       title = case lookup "title" fields <|> lookup "author" fields of
         Just t -> t
         Nothing -> error $ show t ++ " has no title"
       Just year = lookup "year" fields
       clean = unwords . words . filter (/= '\n') . filter (/= '\r')
-  in BibEntry (clean title) (read year) (authorsToList authors) pubType
+  in BibEntry (clean title) (read year) authorKeys pubType
 
-uniqueBibEntries = do 
+authors t = 
+  let Just authors = lookup "author" (Bibtex.fields t)
+  in authorsToList authors
+
+uniqueBibEntries pool = do 
   es <- parseEntries "bibfile.bib"
-  return (map toBibEntry es)
+  let mkEntryAndAuthors e = do
+        let authorNames = authors e
+        authorKeys <- runDB pool $ 
+          mapM (\name -> either entityKey id <$> DB.insertBy (Author name)) authorNames
+        return (toBibEntry e authorKeys)
+  mapM mkEntryAndAuthors es
 
-populateDB = do
-  es <- uniqueBibEntries
-  runDB $ mapM_ DB.insert es
+populateDB pool = do
+  es <- uniqueBibEntries pool
+  runDB pool $ mapM_ DB.insert es

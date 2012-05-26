@@ -7,6 +7,7 @@ import Database.Persist.Sqlite
 
 import DBModel
 
-commentsFor :: BibEntryKey -> IO [Entity ReferenceComment]
-commentsFor key = runDB $ selectList [ReferenceCommentRefer ==. key] []
+commentsFor :: ConnectionPool -> BibEntryKey -> IO [Entity ReferenceComment]
+commentsFor pool key = 
+  runDB pool $ selectList [ReferenceCommentRefer ==. key] []
 

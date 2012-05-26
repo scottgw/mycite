@@ -29,23 +29,29 @@ data PublicationType =
 derivePersistField "PublicationType"
 
 share [mkPersist sqlSettings, mkMigrate "migrateAll"] [persist|
+Author
+  name String
+  Unique name
+
 BibEntry
    title String
    year Int
-   authors [String]
+   authors [AuthorKey]
    pubType PublicationType
-   
+
 ReferenceComment
   refer BibEntryKey
   title String
   text String
 |]
 
+type AuthorKey = Key SqlPersist Author
 type BibEntryKey = Key SqlPersist BibEntry
 
+type SqliteIO a = PersistConfigBackend SqliteConf IO a
 
-runDB :: PersistConfigBackend SqliteConf IO a -> IO a
-runDB f = createPoolConfig dbConf >>= runPool dbConf f
+runDB :: ConnectionPool -> SqliteIO a -> IO a
+runDB pool f = runPool dbConf f pool
 
 dbConf :: SqliteConf
 dbConf = SqliteConf "references.sqlite" 1

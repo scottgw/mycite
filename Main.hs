@@ -10,6 +10,7 @@ import Data.List
 
 import Database.Persist
 import Database.Persist.Sqlite
+import Database.Persist.Store
 
 import Text.Regex
 
@@ -24,6 +25,8 @@ main :: IO ()
 main = do
   initGUI
   
+  pool <- createPoolConfig dbConf
+
   w <- windowNew
   set w [ windowTitle := "MyCite"
         , windowDefaultWidth := 800
@@ -41,7 +44,7 @@ main = do
   
   container <- refsContainer vbox
   
-  entries <- fetchEntries
+  entries <- fetchEntries pool
   
   listStore <- listStoreNew entries
   searchStore <- treeModelFilterNew listStore []
@@ -57,22 +60,24 @@ main = do
           escape (x:xs) = x : escape xs
           escape [] = []
           title = bibEntryTitle (entityVal x)
-          author = bibEntryAuthors (entityVal x)
+          
           regex = mkRegexWithOpts (escape searchText) False False
-          searchResult = matchRegex regex (title ++ concat author)
+          searchResult authors = matchRegex regex (title ++ authors)
         
-        case searchResult of
+        authors <- authorsFor pool x
+        
+        case searchResult authors of
           Just _ -> return True
           Nothing -> return False
   treeModelFilterSetVisibleFunc searchStore searchFunc
   
   
-  treeView <- bibEntryTreeView searchStore listStore entries 
+  treeView <- bibEntryTreeView pool searchStore listStore entries 
   containerAdd container treeView
   
   widgetShowAll w
 
-  w `onDestroy` (saveStore listStore >> mainQuit)
+  w `onDestroy` (saveStore pool listStore >> mainQuit)
 
   mainGUI
 
@@ -90,9 +95,9 @@ menu win = do
   
   return menuBar
 
-saveStore listStore = do
+saveStore pool listStore = do
   entities <- listStoreToList listStore
-  runDB $ do
+  runDB pool $ do
     let saveEntity (Entity key val) = replace key val
     mapM_ saveEntity entities
 
@@ -106,7 +111,7 @@ refsContainer win = do
   containerAdd win scrollWin
   return container
 
-fetchEntries :: IO [Entity BibEntry]
-fetchEntries = do
-  runDB (runMigration migrateAll)
-  runDB (selectList [] [])
+fetchEntries :: ConnectionPool -> IO [Entity BibEntry]
+fetchEntries pool = do
+  runDB pool (runMigration migrateAll)
+  runDB pool (selectList [] [])

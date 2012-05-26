@@ -7,6 +7,7 @@ import Control.Monad
 import Control.Monad.IO.Class (liftIO)
 
 import Data.List
+import qualified Data.Text as Text
 
 import Database.Persist
 import Database.Persist.Sqlite
@@ -15,9 +16,10 @@ import Database.Persist.Store
 import Text.Regex
 
 import CommentEdit
-import DBModel
+import Model.Definition
+import Model.Util
 import Bibtex
-import BibEntry
+import PubGui
 
 import Graphics.UI.Gtk
 
@@ -59,20 +61,20 @@ main = do
           escape ('\\':xs) = "\\\\" ++ escape xs
           escape (x:xs) = x : escape xs
           escape [] = []
-          title = bibEntryTitle (entityVal x)
+          title = Text.unpack $ pubTitle (entityVal x)
           
           regex = mkRegexWithOpts (escape searchText) False False
           searchResult authors = matchRegex regex (title ++ authors)
         
-        authors <- authorsFor pool x
+        authors <- runDB pool (authorsFor (entityVal x))
         
-        case searchResult authors of
+        case searchResult (Text.unpack authors) of
           Just _ -> return True
           Nothing -> return False
   treeModelFilterSetVisibleFunc searchStore searchFunc
   
   
-  treeView <- bibEntryTreeView pool searchStore listStore entries 
+  treeView <- pubTreeView pool searchStore listStore entries 
   containerAdd container treeView
   
   widgetShowAll w
@@ -111,7 +113,7 @@ refsContainer win = do
   containerAdd win scrollWin
   return container
 
-fetchEntries :: ConnectionPool -> IO [Entity BibEntry]
+fetchEntries :: ConnectionPool -> IO [Entity Pub]
 fetchEntries pool = do
   runDB pool (runMigration migrateAll)
   runDB pool (selectList [] [])

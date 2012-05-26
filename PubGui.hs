@@ -1,4 +1,4 @@
-module BibEntry where
+module PubGui where
 
 import Control.Applicative
 import Control.Monad
@@ -6,21 +6,25 @@ import Control.Monad.IO.Class (liftIO)
 
 import Data.List
 import Data.Maybe
+import Data.Time
+import qualified Data.Text as Text
+import Data.Text (Text)
 
 import Graphics.UI.Gtk
 
 import Database.Persist as DB
 -- import Database.Persist.Sqlite
 
-import DBModel
+import Model.Definition
+import Model.Util
 import CommentEdit
 
-bibEntryTreeView pool filterStore listStore entries = do  
+pubTreeView pool filterStore listStore entries = do  
   treeView <- treeViewNewWithModel filterStore
   
   let 
     addColumn :: CellRendererTextClass renderer => 
-                 String -> Bool -> (Entity BibEntry -> IO String) -> 
+                 String -> Bool -> (Entity Pub -> IO Text) -> 
                  renderer -> IO ()
     addColumn title resize extractor renderer = do
       column <- treeViewColumnNew
@@ -32,7 +36,7 @@ bibEntryTreeView pool filterStore listStore entries = do
                  ]
       treeViewAppendColumn treeView column
       cellLayoutSetAttributes column renderer listStore
-        (\row -> [cellText :=> extractor row])
+        (\row -> [cellText :=> Text.unpack <$> extractor row])
       set renderer [cellTextEditable := False]
         
     textColumn title extractor = 
@@ -55,22 +59,21 @@ bibEntryTreeView pool filterStore listStore entries = do
       containerAdd win widget
       widgetShowAll win
   
-  textColumn "Title" (return . bibEntryTitle . entityVal)
-  textColumn "Authors" (authorsFor pool)
-  textColumn "Comments" 
-    (\e -> show <$> length <$> commentsFor pool (entityKey e))
-  spinColumn "Year" (return . show . bibEntryYear . entityVal)
+  textColumn "Title" (return . pubTitle . entityVal)
+  textColumn "Authors" (runDB pool . authorsFor . entityVal)
+  textColumn "Reviews" 
+    (return . Text.pack 
+            . show 
+            . length 
+            <=< runDB pool 
+            . reviewsFor 
+            . entityKey)
+  spinColumn "Year" (return . Text.pack . show . pubDate . entityVal)
   
   on treeView rowActivated (\ path _col -> reactIter path)
   
   return treeView
 
--- authorsFor :: ConnectionPool -> Entity BibEntry -> IO String
-authorsFor pool e = runDB pool $ do
-  authorMbs <- mapM DB.get (bibEntryAuthors (entityVal e))
-  -- log authors that weren't found in DB
-  let authorNames = intercalate "; " . map authorName . catMaybes
-  return (authorNames authorMbs)
 
 listIterToItem :: TreeIter -> ListStore a -> IO a
 listIterToItem iter store =
@@ -79,9 +82,9 @@ listIterToItem iter store =
    
 pack container w = boxPackStart container w PackNatural 2
 
-data BibEntryWidget = 
-  BibEntryWidget 
-  { bibWidgetIdent :: Entity BibEntry
+data PubWidget = 
+  PubWidget 
+  { bibWidgetIdent :: Entity Pub
   , bibWidgetTitle :: Entry
   , bibWidgetYear :: SpinButton
   }
@@ -91,49 +94,50 @@ data GlobalState = GlobalState { dirty :: Bool }
 
 leftAlignNew = alignmentNew 0 0 0 0.5
 
-bibEntryWidgetNew listStore i = do
+pubWidgetNew listStore i = do
   bibEntity <- listStoreGetValue listStore i
-  let bibEntry@(BibEntry title year authors pub) = entityVal bibEntity
+  let pub@(Pub title abstract date authors pubType) = entityVal bibEntity
       key = entityKey bibEntity
   
   entry <- entryNew
-  entrySetText entry title
+  entrySetText entry (Text.unpack title)
   on entry editableChanged 
     (do 
         title' <- entryGetText entry
-        let bibEntry' = bibEntry {bibEntryTitle = title'}
-        listStoreSetValue listStore i (bibEntity {entityVal = bibEntry'})
+        let pub' = pub {pubTitle = Text.pack title'}
+        listStoreSetValue listStore i (bibEntity {entityVal = pub'})
     )
   
   adjustment <- adjustmentNew 0 0 2020 1 5 0
   spin <- spinButtonNew adjustment 1.0 0
-  spinButtonSetValue spin (fromIntegral year)
+  spinButtonSetValue spin ((\(a,_,_) -> fromIntegral a) $ 
+                           toGregorian (utctDay date))
   on spin editableChanged 
     (do 
-        year' <- spinButtonGetValueAsInt spin
-        let bibEntry' = bibEntry {bibEntryYear = year'}
-        listStoreSetValue listStore i (bibEntity {entityVal = bibEntry'})
+        year <- spinButtonGetValueAsInt spin
+        let pub' = pub {pubDate = yearToUTC year}
+        listStoreSetValue listStore i (bibEntity {entityVal = pub'})
     )
   
-  return $ BibEntryWidget bibEntity entry spin
+  return $ PubWidget bibEntity entry spin
 
 authorsWidget :: IO ()
 authorsWidget = do
   return ()
 
-saveBibEntryWidget pool (BibEntryWidget bibEntity title year) = runDB pool $ do
+savePubWidget pool (PubWidget bibEntity title year) = runDB pool $ do
   title' <- liftIO $ entryGetText title
   year' <- liftIO $ spinButtonGetValue year
   
   update (entityKey bibEntity)
-    [ BibEntryTitle =. title'
-    , BibEntryYear =. round year'
+    [ PubTitle =. Text.pack title'
+    , PubDate =. yearToUTC (round year')
     ]
 
 refWidget pool listStore i = do
   table <- tableNew 2 4 False
-  BibEntryWidget bibEntity titleWidget yearWidget <- 
-    bibEntryWidgetNew listStore i
+  PubWidget bibEntity titleWidget yearWidget <- 
+    pubWidgetNew listStore i
   
   let attach :: WidgetClass w => Int -> Int -> w -> IO ()
       attach x y w = do 
@@ -144,7 +148,7 @@ refWidget pool listStore i = do
       labelNew' = labelNew . Just
   
       commentList = do
-        comments <- commentsFor pool (entityKey bibEntity)
+        comments <- runDB pool $ reviewsFor (entityKey bibEntity)
         commentStore <- listStoreNew comments
         
         commentView <- treeViewNewWithModel commentStore
@@ -158,7 +162,7 @@ refWidget pool listStore i = do
         -- set titleColumn [treeViewColumnTitle := "Comment"]
         set commentView [treeViewHeadersVisible := False]
         cellLayoutSetAttributes titleColumn titleRender commentStore
-          (\row -> [cellText := referenceCommentTitle (entityVal row)])
+          (\row -> [cellText := Text.unpack $ Text.take 25 $ reviewText (entityVal row)])
         
         return commentView
   

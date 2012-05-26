@@ -57,10 +57,12 @@ Executable mycite
     persistent-template, 
     persistent-sqlite,
     regex-compat,
+    text,
+    time,
     transformers
   
   -- Modules not exported by this package.
-  Other-modules: DBModel, Bibtex, BibEntry
+  Other-modules: Model.Definition, Bibtex, BibEntry
   
   -- Extra tools (e.g. alex, hsc2hs, ...) needed to build the source.
   -- Build-tools:         

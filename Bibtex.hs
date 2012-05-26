@@ -6,6 +6,9 @@ import Control.Applicative
 import Control.Monad ((<=<))
 
 import Data.Char
+import qualified Data.Text as Text
+import Data.Text (Text)
+
 
 import qualified Text.BibTeX.Entry as Bibtex
 import qualified Text.BibTeX.Parse as Bibtex
@@ -15,7 +18,8 @@ import Text.Parsec.String (parseFromFile)
 import Database.Persist.Sqlite
 import Database.Persist.Store as DB
 
-import DBModel
+import Model.Definition
+import Model.Util
   
 authorsToList :: String -> [String]
 authorsToList = reverse . go [] . words
@@ -35,8 +39,8 @@ parseEntries file = do
     Left e -> error $ show e
     Right es -> es
 
-toBibEntry :: Bibtex.T -> [AuthorKey] -> BibEntry
-toBibEntry t authorKeys = 
+toPub :: Bibtex.T -> [AuthorKey] -> Pub
+toPub t authorKeys = 
   let pubType = 
         case map toLower (Bibtex.entryType t) of
           "inproceedings" -> Conference
@@ -46,15 +50,17 @@ toBibEntry t authorKeys =
           "article" -> Article
           "techreport" -> TechReport
           "phdthesis" -> PhdThesis
-          e -> error $ "toBibEntry: " ++ e
+          e -> error $ "toPub: " ++ e
       fields = Bibtex.fields t
       
       title = case lookup "title" fields <|> lookup "author" fields of
-        Just t -> t
+        Just t -> Text.pack t
         Nothing -> error $ show t ++ " has no title"
-      Just year = lookup "year" fields
-      clean = unwords . words . filter (/= '\n') . filter (/= '\r')
-  in BibEntry (clean title) (read year) authorKeys pubType
+      
+      year :: Int
+      Just year = read <$> lookup "year" fields
+      clean = Text.unwords . Text.words . Text.filter (not . (`elem` "\r\n"))
+  in Pub (clean title) Nothing (yearToUTC year) authorKeys pubType
 
 authors t = 
   let Just authors = lookup "author" (Bibtex.fields t)
@@ -63,10 +69,11 @@ authors t =
 uniqueBibEntries pool = do 
   es <- parseEntries "bibfile.bib"
   let mkEntryAndAuthors e = do
-        let authorNames = authors e
+        let authorNames = map Text.pack $ authors e
         authorKeys <- runDB pool $ 
-          mapM (\name -> either entityKey id <$> DB.insertBy (Author name)) authorNames
-        return (toBibEntry e authorKeys)
+          mapM (\name -> either entityKey id <$> 
+                         DB.insertBy (Author (Just name) Nothing)) authorNames
+        return (toPub e authorKeys)
   mapM mkEntryAndAuthors es
 
 populateDB pool = do

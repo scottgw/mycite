@@ -43,6 +43,9 @@ Author
 
 User
   name Text
+  affiliation Text
+  discipline Text
+  email Text
   Unique name
 
 Pub

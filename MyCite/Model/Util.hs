@@ -1,7 +1,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 
-module Model.Util where
+module Model.Model.Util where
 
 import Control.Applicative
 import Control.Monad
@@ -17,7 +17,7 @@ import Database.Persist.Store
 import Database.Persist.Sqlite
 import Database.Persist.TH
 
-import Model.Definition
+import MyCite.Model.Definition
 
 type SqliteIO a = PersistConfigBackend SqliteConf IO a
 

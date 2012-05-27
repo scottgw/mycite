@@ -6,7 +6,7 @@
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE EmptyDataDecls #-}
 {-# LANGUAGE FlexibleContexts #-}
-module Model.Definition where
+module MyCite.Model.Definition where
 
 import Data.Text
 import Data.Time

@@ -12,8 +12,8 @@ import Data.Text
 import Data.Time
 
 import Database.Persist
+import Database.Persist.GenericSql
 import Database.Persist.Store
-import Database.Persist.Sqlite
 import Database.Persist.TH
 
 data PubType = 

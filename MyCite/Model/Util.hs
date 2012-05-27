@@ -1,7 +1,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 
-module Model.Model.Util where
+module MyCite.Model.Util where
 
 import Control.Applicative
 import Control.Monad
@@ -13,34 +13,30 @@ import Data.Text (Text)
 import Data.Time
 
 import Database.Persist
+import Database.Persist.GenericSql
 import Database.Persist.Store
-import Database.Persist.Sqlite
 import Database.Persist.TH
 
 import MyCite.Model.Definition
 
-type SqliteIO a = PersistConfigBackend SqliteConf IO a
+type Persist a = SqlPersist IO a
 
-runDB :: ConnectionPool -> SqliteIO a -> IO a
-runDB pool f = runPool dbConf f pool
+runDB :: ConnectionPool -> Persist a -> IO a
+runDB = flip runSqlPool
 
-dbConf :: SqliteConf
-dbConf = SqliteConf "references.sqlite" 1
-
-authorUserName :: Author -> SqliteIO Text
+authorUserName :: Author -> Persist Text
 authorUserName author =
   case authorUser author of
      Just userKey -> userName <$> getJust userKey
      Nothing -> return $ fromMaybe (error "authorName: should not be Nothing") 
                                    (authorName author)
 
-authorsFor :: Pub -> SqliteIO Text
+authorsFor :: Pub -> Persist Text
 authorsFor pub = do
   authors :: [Author] <- mapM getJust (pubAuthors pub)
   Text.intercalate "; " <$> mapM authorUserName authors
 
-reviewsFor :: PubKey -> SqliteIO [Entity Review]
+reviewsFor :: PubKey -> Persist [Entity Review]
 reviewsFor key = selectList [ReviewRefer ==. key] []
 
 yearToUTC year = UTCTime (fromGregorian (fromIntegral year) 0 0) 0
-

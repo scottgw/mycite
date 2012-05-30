@@ -18,14 +18,15 @@ library
   exposed-modules:     MyCite.Model.Util,
                        MyCite.Model.Definition,
                        MyCite.Model.Bibtex
+  extra-libraries:     pthread
   -- other-modules:	  
-  build-depends:       base ==4.5.*,
+  build-depends:       base,
                        bibtex ==0.1.*,
                        text ==0.11.*, 
                        time ==1.4.*,
                        parsec ==3.1.*,
-                       persistent ==0.9.*,
-                       persistent-template ==0.9.*
+                       persistent,
+                       persistent-template
 
 executable           mycite-test
   main-is:             MyCite/Model/Test.hs
